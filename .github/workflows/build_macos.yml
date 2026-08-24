@@ -3,7 +3,7 @@ name: Build macOS App
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: # GitHub 웹페이지에서 버튼 클릭으로 수동 실행 가능
+  workflow_dispatch: # GitHub 웹페이지에서 수동 실행 버튼 지원
 
 jobs:
   build-macos:
@@ -25,13 +25,13 @@ jobs:
       - name: Build macOS App
         run: flutter build macos --release
 
-      - name: Compress App Bundle (.zip)
+      - name: Compress macOS App (.zip)
         run: |
-          cd build/macos/Build/Products/Release
-          zip -r ../../../../Calendar-MacOS.zip ./*.app
+          ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/*.app Calendar-MacOS.zip
 
       - name: Upload macOS Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Calendar-MacOS-App
           path: Calendar-MacOS.zip
+          if-no-files-found: error
