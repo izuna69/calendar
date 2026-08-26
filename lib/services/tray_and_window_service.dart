@@ -151,11 +151,14 @@ class TrayAndWindowService with WindowListener, TrayListener {
         await LaunchAtStartup.instance.disable();
       }
       await StorageService.setAutoStart(enable);
+
       await updateTrayMenu();
     } catch (e) {
       debugPrint('[TrayAndWindowService] Error toggling auto-start: $e');
     }
   }
+
+
 
   // WindowListener Callbacks
   @override
@@ -168,8 +171,10 @@ class TrayAndWindowService with WindowListener, TrayListener {
       await exitApp();
     }
   }
-
   // TrayListener Callbacks
+
+
+
   @override
   void onTrayIconMouseDown() async {
     await showAppWindow();
@@ -179,6 +184,9 @@ class TrayAndWindowService with WindowListener, TrayListener {
   void onTrayIconRightMouseDown() async {
     await trayManager.popUpContextMenu();
   }
+
+
+
 
   @override
   void onTrayMenuItemClick(MenuItem menuItem) async {
