@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'screens/calendar_screen.dart';
+import 'services/google_auth_service.dart';
+import 'services/google_calendar_service.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
 import 'services/tray_and_window_service.dart';
@@ -56,16 +58,24 @@ void main(List<String> args) async {
   // 1. ローカルストレージ初期化
   await StorageService.init();
 
-  // 2. 通知サービス初期化
+  // 2. Google サービス初期化
+  GoogleCalendarService.instance.init();
+  GoogleAuthService.instance.init().then((isLoggedIn) {
+    if (isLoggedIn && StorageService.getGoogleAutoSync()) {
+      GoogleCalendarService.instance.syncAll();
+    }
+  });
+
+  // 3. 通知サービス初期化
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     await NotificationService.init();
   }
 
-  // 3. PC起動時の自動起動チェック (--autostart / --minimized)
+  // 4. PC起動時の自動起動チェック (--autostart / --minimized)
   final isAutoStartLaunch =
       args.contains('--autostart') || args.contains('--minimized');
 
-  // 4. システムトレイ＆ウィンドウマネージャー初期化
+  // 5. システムトレイ＆ウィンドウマネージャー初期化
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     await TrayAndWindowService.instance.init(
       isAutoStartLaunch: isAutoStartLaunch,

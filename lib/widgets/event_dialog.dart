@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../models/schedule_event.dart';
+import '../services/google_auth_service.dart';
 import 'color_picker_widget.dart';
 
 class EventDialog extends StatefulWidget {
@@ -105,6 +106,12 @@ class _EventDialogState extends State<EventDialog> {
       isCompleted: isEdit ? widget.event!.isCompleted : false,
       enableNotification: _enableNotification,
       notificationOffsetMinutes: _notificationOffsetMinutes,
+      googleEventId: isEdit ? widget.event!.googleEventId : null,
+      etag: isEdit ? widget.event!.etag : null,
+      syncStatus: isEdit
+          ? (widget.event!.isGoogleSynced ? 'pendingUpdate' : widget.event!.syncStatus)
+          : 'pendingUpload',
+      isDeletedLocally: false,
       isNotified: isEdit
           ? (widget.event!.hasTime == _hasTime &&
                   widget.event!.hour == _selectedTime.hour &&
@@ -362,7 +369,38 @@ class _EventDialogState extends State<EventDialog> {
                 ),
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
+
+              // Google Calendar sync info banner
+              if (GoogleAuthService.instance.isSignedIn)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4285F4).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: const Color(0xFF4285F4).withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.cloud_done, size: 16, color: Color(0xFF4285F4)),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Google カレンダーとリアルタイム同期され、スマホでも確認・通知を受信できます。',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: Color(0xFF1E40AF),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              const SizedBox(height: 16),
 
               // Action Buttons
               Row(

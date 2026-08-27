@@ -42,6 +42,29 @@ void main() {
       expect(fromJson.isNotified, false);
     });
 
+    test('Google sync fields serialization & deserialization', () {
+      final event = ScheduleEvent(
+        id: 'g-1',
+        title: 'Google Event Test',
+        date: DateTime(2026, 8, 20),
+        googleEventId: 'gcal_event_999',
+        etag: '"etag_value"',
+        syncStatus: 'synced',
+        isDeletedLocally: false,
+      );
+
+      expect(event.isGoogleSynced, true);
+
+      final json = event.toJson();
+      final fromJson = ScheduleEvent.fromJson(json);
+
+      expect(fromJson.googleEventId, 'gcal_event_999');
+      expect(fromJson.etag, '"etag_value"');
+      expect(fromJson.syncStatus, 'synced');
+      expect(fromJson.isDeletedLocally, false);
+      expect(fromJson.isGoogleSynced, true);
+    });
+
     test('notificationDateTime calculation', () {
       final event = ScheduleEvent(
         id: 'test-2',
@@ -68,11 +91,13 @@ void main() {
       final updated = event.copyWith(
         title: '更新後のタイトル',
         isCompleted: true,
+        googleEventId: 'new_gid',
       );
 
       expect(updated.id, 'test-3');
       expect(updated.title, '更新後のタイトル');
       expect(updated.isCompleted, true);
+      expect(updated.googleEventId, 'new_gid');
     });
   });
 
@@ -101,10 +126,41 @@ void main() {
       events = StorageService.loadEvents();
       expect(events.first.isCompleted, true);
 
-      // Delete Event
+      // Delete Event (local-only)
       await StorageService.deleteEvent('e1');
       events = StorageService.loadEvents();
       expect(events.isEmpty, true);
+    });
+
+    test('Google synced event deletion creates tombstone', () async {
+      final gEvent = ScheduleEvent(
+        id: 'g-event-1',
+        title: 'Google Synced Event',
+        date: DateTime(2026, 8, 20),
+        googleEventId: 'gid_123',
+        syncStatus: 'synced',
+      );
+
+      await StorageService.addEvent(gEvent);
+
+      // Visible events should show it
+      expect(StorageService.loadEvents().length, 1);
+
+      // Delete creates tombstone
+      await StorageService.deleteEvent('g-event-1');
+
+      // Normal load excludes tombstone
+      expect(StorageService.loadEvents().length, 0);
+
+      // IncludeDeleted load still has it for remote sync
+      final allRaw = StorageService.loadEvents(includeDeleted: true);
+      expect(allRaw.length, 1);
+      expect(allRaw.first.isDeletedLocally, true);
+      expect(allRaw.first.syncStatus, 'pendingDelete');
+
+      // Purge permanently
+      await StorageService.purgeEvent('g-event-1');
+      expect(StorageService.loadEvents(includeDeleted: true).isEmpty, true);
     });
 
     test('Settings get and set', () async {
@@ -115,6 +171,10 @@ void main() {
       expect(StorageService.getMinimizeToTray(), true);
       await StorageService.setMinimizeToTray(false);
       expect(StorageService.getMinimizeToTray(), false);
+
+      expect(StorageService.getGoogleAutoSync(), true);
+      await StorageService.setGoogleAutoSync(false);
+      expect(StorageService.getGoogleAutoSync(), false);
     });
   });
 }

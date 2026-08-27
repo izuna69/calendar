@@ -9,6 +9,14 @@ class StorageService {
   static const String _minimizeToTrayKey = 'setting_minimize_to_tray';
   static const String _darkModeKey = 'setting_dark_mode';
 
+  // Google Calendar Keys
+  static const String _googleAuthCredentialsKey = 'google_auth_credentials';
+  static const String _googleUserEmailKey = 'google_user_email';
+  static const String _googleUserNameKey = 'google_user_name';
+  static const String _googleUserPhotoUrlKey = 'google_user_photo_url';
+  static const String _googleLastSyncTimeKey = 'google_last_sync_time';
+  static const String _googleAutoSyncKey = 'setting_google_auto_sync';
+
   static SharedPreferences? _prefs;
 
   static Future<void> init() async {
@@ -23,7 +31,7 @@ class StorageService {
   }
 
   // Event CRUD
-  static List<ScheduleEvent> loadEvents() {
+  static List<ScheduleEvent> loadEvents({bool includeDeleted = false}) {
     final jsonString = prefs.getString(_eventsKey);
     if (jsonString == null || jsonString.isEmpty) {
       return [];
@@ -31,9 +39,14 @@ class StorageService {
 
     try {
       final List<dynamic> decoded = jsonDecode(jsonString);
-      return decoded
+      final events = decoded
           .map((item) => ScheduleEvent.fromJson(item as Map<String, dynamic>))
           .toList();
+
+      if (!includeDeleted) {
+        return events.where((e) => !e.isDeletedLocally).toList();
+      }
+      return events;
     } catch (e) {
       debugPrint('[StorageService] Error loading events: $e');
       return [];
@@ -48,13 +61,13 @@ class StorageService {
   }
 
   static Future<void> addEvent(ScheduleEvent event) async {
-    final events = loadEvents();
+    final events = loadEvents(includeDeleted: true);
     events.add(event);
     await saveEvents(events);
   }
 
   static Future<void> updateEvent(ScheduleEvent event) async {
-    final events = loadEvents();
+    final events = loadEvents(includeDeleted: true);
     final index = events.indexWhere((e) => e.id == event.id);
     if (index != -1) {
       events[index] = event;
@@ -63,17 +76,37 @@ class StorageService {
   }
 
   static Future<void> deleteEvent(String id) async {
-    final events = loadEvents();
+    final events = loadEvents(includeDeleted: true);
+    final index = events.indexWhere((e) => e.id == id);
+    if (index != -1) {
+      final event = events[index];
+      if (event.isGoogleSynced) {
+        // Google カレンダーと同期されている予定はサーバー側削除のため論理削除 (isDeletedLocally) としてマーク
+        events[index] = event.copyWith(
+          isDeletedLocally: true,
+          syncStatus: 'pendingDelete',
+        );
+      } else {
+        // ローカル専用の予定は即時削除
+        events.removeAt(index);
+      }
+      await saveEvents(events);
+    }
+  }
+
+  static Future<void> purgeEvent(String id) async {
+    final events = loadEvents(includeDeleted: true);
     events.removeWhere((e) => e.id == id);
     await saveEvents(events);
   }
 
   static Future<ScheduleEvent?> toggleComplete(String id) async {
-    final events = loadEvents();
+    final events = loadEvents(includeDeleted: true);
     final index = events.indexWhere((e) => e.id == id);
     if (index != -1) {
       final updated = events[index].copyWith(
         isCompleted: !events[index].isCompleted,
+        syncStatus: events[index].isGoogleSynced ? 'pendingUpdate' : events[index].syncStatus,
       );
       events[index] = updated;
       await saveEvents(events);
@@ -83,7 +116,7 @@ class StorageService {
   }
 
   static Future<void> markNotified(String id) async {
-    final events = loadEvents();
+    final events = loadEvents(includeDeleted: true);
     final index = events.indexWhere((e) => e.id == id);
     if (index != -1) {
       events[index] = events[index].copyWith(isNotified: true);
@@ -91,7 +124,84 @@ class StorageService {
     }
   }
 
-  // Settings
+  // Google Auth & Sync Preferences
+  static String? getGoogleAuthJson() {
+    return prefs.getString(_googleAuthCredentialsKey);
+  }
+
+  static Future<void> setGoogleAuthJson(String? jsonString) async {
+    if (jsonString == null) {
+      await prefs.remove(_googleAuthCredentialsKey);
+    } else {
+      await prefs.setString(_googleAuthCredentialsKey, jsonString);
+    }
+  }
+
+  static String? getGoogleUserEmail() {
+    return prefs.getString(_googleUserEmailKey);
+  }
+
+  static Future<void> setGoogleUserEmail(String? email) async {
+    if (email == null) {
+      await prefs.remove(_googleUserEmailKey);
+    } else {
+      await prefs.setString(_googleUserEmailKey, email);
+    }
+  }
+
+  static String? getGoogleUserName() {
+    return prefs.getString(_googleUserNameKey);
+  }
+
+  static Future<void> setGoogleUserName(String? name) async {
+    if (name == null) {
+      await prefs.remove(_googleUserNameKey);
+    } else {
+      await prefs.setString(_googleUserNameKey, name);
+    }
+  }
+
+  static String? getGoogleUserPhotoUrl() {
+    return prefs.getString(_googleUserPhotoUrlKey);
+  }
+
+  static Future<void> setGoogleUserPhotoUrl(String? url) async {
+    if (url == null) {
+      await prefs.remove(_googleUserPhotoUrlKey);
+    } else {
+      await prefs.setString(_googleUserPhotoUrlKey, url);
+    }
+  }
+
+  static DateTime? getGoogleLastSyncTime() {
+    final str = prefs.getString(_googleLastSyncTimeKey);
+    if (str != null) {
+      return DateTime.tryParse(str);
+    }
+    return null;
+  }
+
+  static Future<void> setGoogleLastSyncTime(DateTime time) async {
+    await prefs.setString(_googleLastSyncTimeKey, time.toIso8601String());
+  }
+
+  static bool getGoogleAutoSync() {
+    return prefs.getBool(_googleAutoSyncKey) ?? true;
+  }
+
+  static Future<void> setGoogleAutoSync(bool value) async {
+    await prefs.setBool(_googleAutoSyncKey, value);
+  }
+
+  static Future<void> clearGoogleAuth() async {
+    await prefs.remove(_googleAuthCredentialsKey);
+    await prefs.remove(_googleUserEmailKey);
+    await prefs.remove(_googleUserNameKey);
+    await prefs.remove(_googleUserPhotoUrlKey);
+    await prefs.remove(_googleLastSyncTimeKey);
+  }
+
+  // General Settings
   static bool getAutoStart() {
     return prefs.getBool(_autoStartKey) ?? true;
   }

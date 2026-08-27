@@ -16,6 +16,12 @@ class ScheduleEvent {
   final DateTime createdAt;
   DateTime updatedAt;
 
+  // Google Calendar Integration
+  String? googleEventId;
+  String? etag;
+  String syncStatus; // 'synced', 'pendingUpload', 'pendingUpdate', 'pendingDelete', 'localOnly'
+  bool isDeletedLocally;
+
   ScheduleEvent({
     required this.id,
     required this.title,
@@ -31,12 +37,18 @@ class ScheduleEvent {
     this.isNotified = false,
     DateTime? createdAt,
     DateTime? updatedAt,
+    this.googleEventId,
+    this.etag,
+    this.syncStatus = 'localOnly',
+    this.isDeletedLocally = false,
   })  : createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
 
   Color get color => Color(colorValue);
 
   TimeOfDay get timeOfDay => TimeOfDay(hour: hour, minute: minute);
+
+  bool get isGoogleSynced => googleEventId != null && googleEventId!.isNotEmpty;
 
   DateTime get scheduledDateTime {
     if (hasTime) {
@@ -67,6 +79,10 @@ class ScheduleEvent {
       'isNotified': isNotified,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'googleEventId': googleEventId,
+      'etag': etag,
+      'syncStatus': syncStatus,
+      'isDeletedLocally': isDeletedLocally,
     };
   }
 
@@ -90,6 +106,10 @@ class ScheduleEvent {
       updatedAt: json['updatedAt'] != null
           ? DateTime.parse(json['updatedAt'] as String)
           : DateTime.now(),
+      googleEventId: json['googleEventId'] as String?,
+      etag: json['etag'] as String?,
+      syncStatus: json['syncStatus'] as String? ?? 'localOnly',
+      isDeletedLocally: json['isDeletedLocally'] as bool? ?? false,
     );
   }
 
@@ -108,6 +128,10 @@ class ScheduleEvent {
     bool? isNotified,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? googleEventId,
+    String? etag,
+    String? syncStatus,
+    bool? isDeletedLocally,
   }) {
     return ScheduleEvent(
       id: id ?? this.id,
@@ -125,6 +149,10 @@ class ScheduleEvent {
       isNotified: isNotified ?? this.isNotified,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
+      googleEventId: googleEventId ?? this.googleEventId,
+      etag: etag ?? this.etag,
+      syncStatus: syncStatus ?? this.syncStatus,
+      isDeletedLocally: isDeletedLocally ?? this.isDeletedLocally,
     );
   }
 }

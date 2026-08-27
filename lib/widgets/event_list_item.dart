@@ -191,6 +191,35 @@ class EventListItem extends StatelessWidget {
                                 ],
                               ),
                             ),
+
+                          // Google Sync tag
+                          if (event.isGoogleSynced)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF4285F4).withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.cloud_done,
+                                    size: 11,
+                                    color: Color(0xFF4285F4),
+                                  ),
+                                  SizedBox(width: 3),
+                                  Text(
+                                    'Google',
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1D4ED8),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                         ],
                       ),
                     ],

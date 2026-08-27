@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../models/schedule_event.dart';
+import '../services/google_auth_service.dart';
+import '../services/google_calendar_service.dart';
 import '../services/notification_service.dart';
 import '../services/storage_service.dart';
 import '../services/tray_and_window_service.dart';
@@ -39,10 +41,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
     TrayAndWindowService.instance.onQuickAddRequested = () {
       _showAddEventDialog();
     };
+
+    // Google 同期完了リスナー -> 予定リスト自動更新
+    GoogleCalendarService.instance.lastSyncTime.addListener(_onSyncCompleted);
+  }
+
+  void _onSyncCompleted() {
+    if (mounted) {
+      _loadEvents();
+    }
   }
 
   @override
   void dispose() {
+    GoogleCalendarService.instance.lastSyncTime.removeListener(_onSyncCompleted);
     _searchController.dispose();
     super.dispose();
   }
@@ -107,6 +119,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _loadEvents();
       NotificationService.checkAndTriggerNotifications();
 
+      // Google カレンダー自動プッシュ
+      if (GoogleAuthService.instance.isSignedIn && StorageService.getGoogleAutoSync()) {
+        GoogleCalendarService.instance.pushEvent(result).then((_) {
+          if (mounted) _loadEvents();
+        });
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -132,6 +151,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _loadEvents();
       NotificationService.checkAndTriggerNotifications();
 
+      // Google カレンダー自動更新プッシュ
+      if (GoogleAuthService.instance.isSignedIn && StorageService.getGoogleAutoSync()) {
+        GoogleCalendarService.instance.pushEvent(result).then((_) {
+          if (mounted) _loadEvents();
+        });
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -144,8 +170,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _deleteEvent(String id) async {
+    final targetIndex = _allEvents.indexWhere((e) => e.id == id);
+    ScheduleEvent? targetEvent;
+    if (targetIndex != -1) {
+      targetEvent = _allEvents[targetIndex];
+    }
+
     await StorageService.deleteEvent(id);
     _loadEvents();
+
+    // Google カレンダー自動削除プッシュ
+    if (targetEvent != null &&
+        targetEvent.isGoogleSynced &&
+        GoogleAuthService.instance.isSignedIn) {
+      GoogleCalendarService.instance.deleteEvent(targetEvent).then((_) {
+        if (mounted) _loadEvents();
+      });
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -161,6 +202,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final updated = await StorageService.toggleComplete(id);
     _loadEvents();
 
+    // Google カレンダー完了状態の同期
+    if (updated != null &&
+        updated.isGoogleSynced &&
+        GoogleAuthService.instance.isSignedIn &&
+        StorageService.getGoogleAutoSync()) {
+      GoogleCalendarService.instance.pushEvent(updated).then((_) {
+        if (mounted) _loadEvents();
+      });
+    }
+
     if (mounted && updated != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -175,13 +226,40 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
+  Future<void> _handleManualSync() async {
+    final success = await GoogleCalendarService.instance.syncAll();
+    _loadEvents();
+
+    if (mounted) {
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Google カレンダーと同期しました。'),
+            backgroundColor: Color(0xFF10B981),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('同期エラー: ${GoogleCalendarService.instance.syncError.value ?? "不明なエラー"}'),
+            backgroundColor: const Color(0xFFEF4444),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   void _showSettings() {
     showDialog(
       context: context,
       builder: (ctx) => SettingsDialog(
         onThemeChanged: widget.onThemeChanged,
       ),
-    );
+    ).then((_) {
+      _loadEvents();
+    });
   }
 
   @override
@@ -218,29 +296,74 @@ class _CalendarScreenState extends State<CalendarScreen> {
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
             const SizedBox(width: 12),
-            // Background notification active badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: Colors.green.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.check_circle, size: 12, color: Colors.green),
-                  SizedBox(width: 4),
-                  Text(
-                    'バックグラウンド通知 有効',
-                    style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.bold),
+
+            // Google Calendar Sync Badge
+            ValueListenableBuilder<bool>(
+              valueListenable: GoogleAuthService.instance.isSignedInNotifier,
+              builder: (context, isSignedIn, _) {
+                if (!isSignedIn) {
+                  return const SizedBox.shrink();
+                }
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4285F4).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: const Color(0xFF4285F4).withValues(alpha: 0.3),
+                    ),
                   ),
-                ],
-              ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.cloud_done,
+                        size: 13,
+                        color: Color(0xFF4285F4),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Google 連携中',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.blue.shade700,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
           ],
         ),
         actions: [
+          // Google Sync Button
+          ValueListenableBuilder<bool>(
+            valueListenable: GoogleAuthService.instance.isSignedInNotifier,
+            builder: (context, isSignedIn, _) {
+              if (!isSignedIn) return const SizedBox.shrink();
+
+              return ValueListenableBuilder<bool>(
+                valueListenable: GoogleCalendarService.instance.isSyncing,
+                builder: (context, isSyncing, _) {
+                  return IconButton(
+                    icon: isSyncing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.sync),
+                    tooltip: 'Google カレンダーを今すぐ同期',
+                    onPressed: isSyncing ? null : _handleManualSync,
+                  );
+                },
+              );
+            },
+          ),
+          const SizedBox(width: 4),
+
           // Today button
           TextButton.icon(
             icon: const Icon(Icons.today, size: 18),
