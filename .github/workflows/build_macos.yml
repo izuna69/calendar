@@ -25,11 +25,11 @@ jobs:
       - name: Install dependencies
         run: |
           flutter pub get
-          cd macos && pod install --repo-update || true
+          cd macos && pod install || true
           cd ..
 
       - name: Build macOS App
-        run: flutter build macos --release --verbose
+        run: flutter build macos --release
 
       - name: Compress macOS App (.zip)
         run: |
