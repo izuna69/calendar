@@ -19,11 +19,14 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Enable macOS desktop
+        run: flutter config --enable-macos-desktop
+
       - name: Install dependencies
         run: flutter pub get
 
       - name: Build macOS App
-        run: flutter build macos --release
+        run: flutter build macos --release --no-codesign
 
       - name: Compress macOS App (.zip)
         run: |
